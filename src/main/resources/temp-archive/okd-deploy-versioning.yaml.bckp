@@ -1,0 +1,52 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: productorder-api
+  namespace: gateway-api-dh-dev
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: productorder-api
+        appdate : "APP_DEPLOY_DATE"
+    spec:
+      imagePullSecrets:
+        - name: kumocodokdhub
+      containers:
+        - name: productorder-api
+          image: registry.okdjoe.us-east1-b.c.devops-274211.internal/default/productorder:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol : TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - mountPath: /tmp
+              name: productorder-vol1
+      volumes:
+        - emptyDir: {}
+          name: productorder-vol1
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: productorder-api
+  namespace: gateway-api-dh-dev
+spec:
+  selector:
+    app: productorder-api
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

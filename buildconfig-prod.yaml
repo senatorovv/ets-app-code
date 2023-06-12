@@ -1,0 +1,48 @@
+---
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: productorder-dockerbuild
+  namespace: vfom-jenkins-non-production
+  labels:
+    app: productorder-dockerbuild
+spec:
+  nodeSelector: null
+  output:
+    to:
+      kind: DockerImage
+      name: 'prodgitlab.vodafone.om:5050/kumoco/dockerhub/productorder:latest'
+    pushSecret:
+      name: "gitlabdockercfg"
+  resources: {}
+  successfulBuildsHistoryLimit: 5
+  failedBuildsHistoryLimit: 5
+  strategy:
+    type: Docker
+    dockerStrategy:
+      from:
+        kind: DockerImage
+        name: 'prodgitlab.vodafone.om:5050/kumoco/dockerhub/gateway-apis:jdkbaseimage03-1'
+      pullSecret:
+        name: "gitlabdockercfg"
+  postCommit: {}
+  source:
+    type: Binary
+    binary:
+      asFile: app.tar.gz
+    dockerfile: >-
+      FROM prodgitlab.vodafone.om:5050/kumoco/dockerhub/gateway-apis:jdkbaseimage03-1
+      
+      USER root
+
+      COPY app.tar.gz /app.tar.gz
+
+      RUN tar -xzvf app.tar.gz && mv -f build/libs/* / && rm -rf build/ && rm -rf apps.tar.gz
+
+      RUN sed -i "s/active=e2e/active=prod/g" /run.sh
+      
+      USER kumoco
+
+      CMD /run.sh
+      
+  runPolicy: Serial

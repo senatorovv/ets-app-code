@@ -1,0 +1,11 @@
+server:
+  port: 8080
+activemq:
+  url-dev: tcp://activemqmk:61616
+  user: admin
+  password: admin
+logging:
+  level:
+    root: INFO
+    org.springframework.web: ERROR
+    com.kumoco: DEBUG   

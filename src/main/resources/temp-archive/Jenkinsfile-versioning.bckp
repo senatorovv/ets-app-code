@@ -1,0 +1,111 @@
+pipeline {
+    agent any
+
+    options { disableConcurrentBuilds() }
+
+    stages {
+            stage('Clean Up') {
+              steps {
+                echo 'Cleaning without ws ...'
+                cleanWs()
+//                 sh 'docker rm -f productorder-api'
+                }
+            }
+
+            stage('Clone Repository') {
+                      steps {
+                        echo 'Checking out the latest code from Github'
+                        checkout scm
+                  }
+            }
+
+            stage(' Compile') {
+                steps {
+                    echo 'Compiling ...'
+                    sh './gradlew compileJava'
+                }
+            }
+
+            stage('Unit Tests') {
+                steps {
+                    echo 'Unit testing. ..'
+                    sh './gradlew test'
+                }
+            }
+
+            stage('Package') {
+                steps {
+                    echo 'Building ...'
+                    sh './gradlew build'
+                }
+            }
+
+            stage('Static Code Analysis/Test Coverage') {
+                environment {
+                    scannerHome = tool 'SonarQubeScanner'
+                }
+                steps {
+                    echo 'Code Analysis ...'
+                    withSonarQubeEnv('sonarqube') {
+                        sh "${scannerHome}/bin/sonar-scanner"
+                    }
+                }
+            }
+
+            stage('Get App Version') {
+                steps {
+                  script {
+                    def appversion = sh (
+                        script: "./gradlew properties -q | grep \"version:\" | awk '{print \$2}'",
+                        returnStdout: true
+                    ).trim().replace("-SNAPSHOT","")
+                    env.BUILD_TAG = "${appversion}"
+                    sh "echo Building project in version: ${env.BUILD_TAG}"
+                  }
+                }
+            }
+
+            stage("Build/Push Image to OKD Registry") {
+                steps {
+                    echo "Build Number :${BUILD_TAG}"
+                    echo 'Build for OKD Registry...'
+                    withCredentials([usernamePassword(credentialsId: 'ocadmin', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                      sh '''
+                      oc login "okdjoe.us-east1-b.c.devops-274211.internal:8443" -u "$USERNAME" -p "$PASSWORD" --insecure-skip-tls-verify
+                      docker login -u admin -p $(oc whoami -t) https://registry.okdjoe.us-east1-b.c.devops-274211.internal
+                      docker build -f src/main/resources/DockerFiles/application.dockerfile -t registry.okdjoe.us-east1-b.c.devops-274211.internal/default/productorder:${BUILD_TAG} .
+                      docker push registry.okdjoe.us-east1-b.c.devops-274211.internal/default/productorder:${BUILD_TAG}
+                      docker tag registry.okdjoe.us-east1-b.c.devops-274211.internal/default/productorder:${BUILD_TAG} registry.okdjoe.us-east1-b.c.devops-274211.internal/default/productorder:latest
+                      docker push registry.okdjoe.us-east1-b.c.devops-274211.internal/default/productorder:latest
+                      docker logout https://registry.okdjoe.us-east1-b.c.devops-274211.internal
+                      '''
+                    }
+                }
+            }
+
+            stage('OKD Deploy') {
+                steps {
+                    echo 'Deploy to OKD...'
+                    withCredentials([usernamePassword(credentialsId: 'ocadmin', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                        sh '''
+                        oc login "okdjoe.us-east1-b.c.devops-274211.internal:8443" -u "$USERNAME" -p "$PASSWORD" --insecure-skip-tls-verify
+                        oc project gateway-api-dh-dev
+                        sed -i "s/APP_DEPLOY_DATE/$(date +'%Y%m%d%H%M%S')/g" okd-deploy.yaml
+                        oc apply -f okd-deploy.yaml
+                        '''
+                    }
+                }
+            }
+    }
+
+    post {
+           failure {
+               echo "Deploy Failed"
+//                slackSend channel: '#jenkins-deploys', color: 'danger', message: "Deployment Failed: ${env.JOB_NAME} - ${env.BUILD_NUMBER} ()"
+           }
+           success {
+               echo "Deploy Successfully Completed..."
+//                slackSend channel: '#jenkins-deploys', color: 'good', message: "Deployment Success Completed: ${env.JOB_NAME} - ${env.BUILD_NUMBER} ()"
+           }
+       }
+}

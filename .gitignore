@@ -1,0 +1,11 @@
+.gradle
+.idea
+build
+.project
+bin
+lsp
+out
+.settings
+.project
+.classpath
+lombok.config

@@ -1,0 +1,83 @@
+def getProfileName(pEnvName) {
+    switch(pEnvName) {
+
+      case "prod":
+        env.PROFILE_NAME = "prod"
+        break
+
+      default:
+        env.PROFILE_NAME = "prod"
+        break
+    }
+}
+
+pipeline {
+
+    agent any
+
+    options { disableConcurrentBuilds() }
+
+    stages {
+
+            stage('Select Environment') {
+                   options {
+                     timeout(time: 20, unit: 'SECONDS')
+               }
+               steps {
+                  script {
+                     try {
+                        env.RELEASE_SCOPE = input message: 'Please Provide Parameters', ok: 'Next',
+                                 parameters: [choice(name: 'RELEASE_SCOPE', choices: ['kumoco'].join('\n'), description: 'Please select the Environment')]
+                        echo "Selected Environment: ${env.RELEASE_SCOPE}"
+                     } catch (Throwable e) {
+                        echo "TIMEOUT.... Waited 20 secs..."
+                        env.RELEASE_SCOPE = 'kumoco'
+                     }
+
+                  getProfileName( "${env.RELEASE_SCOPE}" )
+
+                  echo "------------------------------------------------------"
+                  echo "Selected Profile: ${env.PROFILE_NAME}"
+                  echo "Selected Environment: ${env.RELEASE_SCOPE}"
+                  echo "------------------------------------------------------"
+
+                  }
+               }
+            }
+              }
+    }
+
+try {
+    node ("kcgradle"){       
+
+            stage('Clean Up') {
+                echo 'Cleaning without ws ...'
+                cleanWs()
+            }
+
+            stage('Clone Repository') {
+                  echo 'Checking out the latest code from Github'
+                  checkout scm
+            }
+
+            stage('Production Deploy') {
+                    echo 'SIT to Docker...'
+                    withCredentials([usernamePassword(credentialsId: 'ocadmin', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                        sh '''
+                        PAPPDATE=$(date '+%Y%m%d%H%M%S')
+                        sed -i "s/kcdeploydate.*/kcdeploydate: '${PAPPDATE}'/g" "${PROFILE_NAME}-deploy.yaml"
+                        oc login "$OPENSHIFTPRODUCTIONSERVER" -u "$USERNAME" -p "$PASSWORD" --insecure-skip-tls-verify
+                        oc project "${RELEASE_SCOPE}" -q
+                        oc apply -f "${PROFILE_NAME}-deploy.yaml"
+                        oc logout
+                        '''
+                    }
+            }
+    }
+
+} catch (err) {
+   echo "in catch block"
+   echo "Caught: ${err}"
+   currentBuild.result = 'FAILURE'
+   throw err
+}

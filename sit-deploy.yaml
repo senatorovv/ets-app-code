@@ -1,0 +1,105 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productorder-api
+  namespace: api-gateway-sit
+spec:
+  selector:
+    matchLabels:
+      app: productorder-api
+      kcdeploydate: base
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: productorder-api
+    spec:
+      imagePullSecrets:
+        - name: gitlabdockercfg
+      securityContext:
+        runAsUser: 0
+      serviceAccountName: api-router-svc
+      containers:
+        - name: productorder-api
+          image: prodgitlab.vodafone.om:5050/kumoco/dockerhub/productorder:sit
+          imagePullPolicy: Always
+          env:
+            - name: OCNAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: OCAPPNAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: OCDEPLOYNAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: 'metadata.labels[''app'']'
+            - name: OCNODENAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          ports:
+            - containerPort: 8080
+              protocol : TCP
+          resources:
+            requests:
+              cpu: 10m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /camel/dev/api/productOrder/actuator/custom/health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            timeoutSeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 10
+          volumeMounts:
+            - mountPath: /tmp
+              name: productorder-vol1
+            - name: filebeatconfig
+              readOnly: true
+              mountPath: /etc/filebeat/filebeat.yml
+              subPath: filebeat.yml
+            - name: syslogconfig
+              readOnly: true
+              mountPath: /etc/syslog-ng/conf.d/kc-syslog.conf
+              subPath: kc-syslog.conf
+      volumes:
+        - emptyDir: {}
+          name: productorder-vol1
+        - name: filebeatconfig
+          configMap:
+            name: filebeat-config
+            defaultMode: 416
+        - name: syslogconfig
+          configMap:
+            name: syslogng-config
+            defaultMode: 420
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: productorder-api
+  namespace: api-gateway-sit
+spec:
+  selector:
+    app: productorder-api
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

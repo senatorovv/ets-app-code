@@ -1,0 +1,37 @@
+#  ProductOrderAPI
+server:
+  servlet:
+    context-path: /camel/dev/api/
+camel:
+  springboot:
+    name: productorderAPI
+  component:
+    servlet:
+      mapping:
+        enabled: true
+        context-path: /camel/dev/api/
+management:
+  endpoints:
+    web:
+      base-path: /productOrder/actuator/custom
+      exposure:
+        include: health, info, metrics
+quickstart:
+  generateOrderPeriod: 10s
+  processOrderPeriod: 30s
+activemq:
+  request-queue: activemq://productorder-request-queue
+  response-queue: activemq://productorder-response-queue
+selector:
+  request-id-filter: ?selector=requestId='{requestId}'
+spring:
+  profiles:
+    active: dev
+  main:
+    allow-bean-definition-overriding: true
+  jackson:
+    default-property-inclusion: non_empty
+  activemq:
+    pool:
+      enabled: true
+      max-connections: 100
